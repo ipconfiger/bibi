@@ -1,0 +1,2 @@
+# bibi
+Static blog generator
