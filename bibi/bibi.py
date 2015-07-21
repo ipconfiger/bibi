@@ -261,7 +261,10 @@ def test(port):
 
 @app.route('/hook', methods=['POST', 'GET'])
 def webhook():
-    print request.data
+    import git
+    g = git.cmd.Git(os.getcwd())
+    g.pull()
+    gen()
     return jsonify(status="ok")
 
 
