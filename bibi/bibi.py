@@ -191,10 +191,8 @@ def project(name):
     :return:
     """
     path = os.path.join(os.getcwd(), name)
-    if os.path.exists(path):
-        print 'Directory exists! User another name!'
-        return sys.exit(1)
-    os.mkdir(path)
+    if not os.path.exists(path):
+        os.mkdir(path)
     post_path = os.path.join(path, POSTS_FOLDER)
     os.mkdir(post_path)
     layout_path = os.path.join(path, LAYOUTS_FOLDER)
