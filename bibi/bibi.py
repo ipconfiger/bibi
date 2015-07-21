@@ -6,9 +6,10 @@ import os
 import sys
 import datetime
 import markdown
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from flask.ext.script import Manager
-from jinja2 import Environment, DictLoader
+from jinja2.loaders import DictLoader
+from jinja2 import Environment
 
 SITE_FOLDER = '_site'
 POSTS_FOLDER = '_post'
@@ -22,11 +23,9 @@ manager = Manager(app)
 
 proj = os.path.split(os.getcwd())[-1]
 
-env = Environment(loader=DictLoader('_include'))
-
 
 def date_to_string(date):
-    return "%s年%sd月%s日" % (date.year, date.month, date.day)
+    return u"%s年%sd月%s日" % (date.year, date.month, date.day)
 
 
 def get_files(folder='_post', markdown=True):
@@ -90,23 +89,22 @@ def parse_filename(file_name):
     return date, date_str, "%s.html" % title_name
 
 
-def make_template(template_file):
+def render_template(template, context):
     """
-    返回jinja2 的模板对象
-    :param template_file:
+    渲染页面
+    :param template: 模板对象
+    :param context: 环境变量
     :return:
     """
-    from jinja2 import Template
-    template = Template(template_file.decode('utf-8'))
-    template.env = env
-    return template
-
-
-def render_template(template, context):
     template.render(**context)
 
 
 def process_data(datas):
+    """
+    处理POST数据
+    :param datas: 待处理的数据列表
+    :return: 处理完成的数据列表
+    """
     results = []
     for file_name, data_str in datas:
         propertys, content_str = process_header(data_str)
@@ -114,8 +112,8 @@ def process_data(datas):
         propertys.update(
             dict(
                 date=dt,
-                file_name=save_name,
-                dir=dt_str,
+                file_name=save_name.decode('utf-8'),
+                dir=dt_str.decode('utf-8'),
                 content=markdown.markdown(content_str.decode('utf-8')),
                 url=u"/%s/%s" % (dt_str.decode('utf-8'), save_name.decode('utf-8'))
             )
@@ -219,14 +217,27 @@ def gen():
     pages = get_files(folder='', markdown=False)
     markdowns = get_files(folder=POSTS_FOLDER, markdown=True)
 
+    template_env_dict = {}
     template_dict = {}
     for file_name, temp_file in templates:
         propertys, template_html = process_header(temp_file)
-        template_dict[file_name.split('.')[0]] = dict(ppt=propertys, template=make_template(template_html))
+        template_dict[file_name] = dict(ppt=propertys, template=None)
+        template_env_dict[file_name] = template_html.decode('utf-8')
 
     for file_name, page_html in pages:
         propertys, template_html = process_header(page_html)
-        template_dict[os.path.splitext(file_name)[0]] = dict(ppt=propertys, template=make_template(template_html))
+        template_dict[file_name] = dict(ppt=propertys, template=None)
+        template_env_dict[file_name] = template_html.decode('utf-8')
+
+    env = Environment(loader=DictLoader(template_env_dict))
+    env.filters['date_to_string'] = date_to_string
+
+    process_template_dict = {}
+    for file_name, meta in template_dict.iteritems():
+        template = env.get_template(file_name)
+        propertys = template_dict[file_name]
+        propertys["template"] = template
+        process_template_dict[os.path.splitext(file_name)[0]] = propertys
 
     site = {}
     site['pages'] = process_page(pages)
@@ -235,10 +246,10 @@ def gen():
     site['posts'] = sorted_posts
 
     for post in posts:
-        render_post(post, site, template_dict)
+        render_post(post, site, process_template_dict)
 
     for page in site.get('pages'):
-        render_single_page(page, site, template_dict)
+        render_single_page(page, site, process_template_dict)
 
     print "all process done"
 
@@ -259,6 +270,35 @@ def test(port):
     httpd.serve_forever()
 
 
+@manager.command
+def nginx_conf(domain):
+    return """
+server {
+ listen          80;
+ server_name     %s;
+ location / {
+  root  %s;
+  index index.html;
+ }
+}
+    """ % (domain, os.path.join(os.getcwd(), SITE_FOLDER))
+
+
+@manager.command
+def hook_conf(port, log_file):
+    return """[program:img]
+command=/usr/bin/python bibi.py runserver --host 0.0.0.0 --port %s
+directory=%s
+umask=022
+startsecs=0
+stopwaitsecs=0
+redirect_stderr=true
+stdout_logfile=%s
+autorestart=true
+autostart=true
+""" % (port, os.getcwd(), log_file)
+
+
 @app.route('/hook', methods=['POST', 'GET'])
 def webhook():
     import git
@@ -268,6 +308,9 @@ def webhook():
     return jsonify(status="ok")
 
 
-if __name__ == "__main__":
-    env.filters["date_to_string"] = date_to_string
+def main():
     manager.run()
+
+
+if __name__ == "__main__":
+    main()
