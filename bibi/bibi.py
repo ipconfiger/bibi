@@ -168,7 +168,10 @@ def render_post(post, site, template_dict):
     file_path = os.path.join(dir_folder, file_name)
     with open(file_path, 'w+') as f:
         f.write(html_file.encode('utf-8'))
-    print u"post:%s process done!" % post.get('title')
+    try:
+        print u"post:%s process done!" % post.get('title')
+    except:
+        pass
 
 
 def render_single_page(page, site, template_dict):
@@ -182,7 +185,10 @@ def render_single_page(page, site, template_dict):
     file_path = os.path.join(base_folder, file_name)
     with open(file_path, 'w+') as f:
         f.write(html_file.encode('utf-8'))
-    print u"page:%s process done!" % file_name
+    try:
+        print u"page:%s process done!" % file_name
+    except:
+        pass
 
 @manager.command
 def project(name):
