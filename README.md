@@ -2,7 +2,6 @@
 Static blog generator
 
 -------------------
-正在添加对pygments的内置支持和增加各类必须的filter
 
 ## Useage
 
@@ -57,5 +56,31 @@ host web hook service on supervior, the blog site will update automatically when
 
 
     $bibi hook_conf /var/log/hook.log
+    
+### Code hightlighting
 
+    {% highlight python %}
+        def func():
+            print "hello world"
+    {% endhighlight %}
 
+you need stylesheet of pygments
+
+Tips: becarefull of you css reset, it may cause python code miss ident
+
+### Paste code from gist
+
+    {% gist account/gist_id %}
+    
+for example {% gist ipconfiger/6142002 %}
+
+### Limit String length or list length
+
+    {{ post.title | limit(20) }}
+
+will show 20 character
+OR
+
+    {% for post in site.posts | limit(5) %}
+    
+will show 5 posts
