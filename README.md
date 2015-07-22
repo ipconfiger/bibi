@@ -1,6 +1,9 @@
 # bibi
 Static blog generator
 
+-------------------
+正在添加对pygments的内置支持和增加各类必须的filter
+
 ## Useage
 
 ### Installation
