@@ -285,7 +285,7 @@ server {
 
 @manager.command
 def hook_conf(port, log_file):
-    return """[program:img]
+    conf = """[program:img]
 command=/usr/bin/python bibi.py runserver --host 0.0.0.0 --port %s
 directory=%s
 umask=022
@@ -296,6 +296,7 @@ stdout_logfile=%s
 autorestart=true
 autostart=true
 """ % (port, os.getcwd(), log_file)
+    sys.stdout.write(conf)
 
 
 @app.route('/hook', methods=['POST', 'GET'])
