@@ -5,11 +5,15 @@ Static blog generator
 
 1. Installation
 
+
     $sudo pip install bibi
+
 
 2. Create Site
 
+
     $bibi project project_name
+
 
 this command will create folder project_name and the structure of project.
 
@@ -30,16 +34,19 @@ this command will create folder project_name and the structure of project.
     $cd project_name
     $bibi gen
 
+
 4. Preview Site
 
 
     $bibi test 8000
+
 
 5. Generate nginx conf file
   so you can host blog on your own server
 
 
     $bibi nginx_conf domain_name
+
 
 6. Generate supervisor conf file
   host web hook service on supervior, the blog site will update automatically when you push to github
