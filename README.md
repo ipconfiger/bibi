@@ -30,6 +30,7 @@ this command will create folder project_name and the structure of project.
  
 3. Generate html files
 
+command must run in project folder
 
     $cd project_name
     $bibi gen
@@ -37,19 +38,22 @@ this command will create folder project_name and the structure of project.
 
 4. Preview Site
 
+you can preview site after you generate html files
 
     $bibi test 8000
 
 
 5. Generate nginx conf file
-  so you can host blog on your own server
+
+so you can host blog on your own server
 
 
     $bibi nginx_conf domain_name
 
 
 6. Generate supervisor conf file
-  host web hook service on supervior, the blog site will update automatically when you push to github
+
+host web hook service on supervior, the blog site will update automatically when you push to github
 
 
     $bibi hook_conf /var/log/hook.log
