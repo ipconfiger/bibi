@@ -31,18 +31,37 @@ manager = Manager(app)
 proj = os.path.split(os.getcwd())[-1]
 
 
-class FragmentHighlightExtension(Extension):
+class FragmentGistExtension(Extension):
     # a set of names that trigger the extension.
+    tags = set(['gist'])
+
+    def __init__(self, environment):
+        super(FragmentGistExtension, self).__init__(environment)
+
+    def parse(self, parser):
+        parser.stream.next()
+        args = [parser.parse_expression()]
+        if parser.stream.skip_if('comma'):
+            args.append(parser.parse_expression())
+        else:
+            args.append(nodes.Const(None))
+        print args
+
+        gist_id = "%s/%s" % (args[0].left.name, args[0].right.value)
+        node = nodes.TemplateData()
+        node.data = '<script src="https://gist.github.com/%s.js"></script>' % gist_id
+        return node
+
+
+class FragmentHighlightExtension(Extension):
+    """
+    代码高亮
+    """
     tags = set(['highlight'])
 
     def __init__(self, environment):
         super(FragmentHighlightExtension, self).__init__(environment)
 
-        # add the defaults to the environment
-        environment.extend(
-            fragment_highlight_prefix='',
-            fragment_highlight=None
-        )
 
     def parse(self, parser):
         parser.stream.next()
@@ -162,7 +181,7 @@ def process_data(datas, process_template_dict):
                 name = name,
                 file_name=save_name.decode('utf-8'),
                 dir=dt_str.decode('utf-8'),
-                content=template.render(content=""),
+                content=markdown.markdown(template.render(content="")),
                 url=u"/%s/%s" % (dt_str.decode('utf-8'), save_name.decode('utf-8'))
             )
         )
@@ -190,6 +209,8 @@ def render_pages(layout, template_dict, **propertys):
         template_ppt = template_item.get('ppt')
         template = template_item.get('template')
         html_file = template.render(**propertys)
+        if propertys.get("content") == "":
+            html_file = markdown.markdown(html_file)
         if template_ppt.get('layout', None):
             propertys.update(dict(content=html_file))
             return render_pages(template_ppt.get('layout'), template_dict, **propertys)
@@ -284,9 +305,14 @@ def gen():
     for file_name, data_markdown in markdowns:
         propertys, template_markdown = process_header(data_markdown)
         template_dict[file_name] = dict(ppt=propertys, template=None)
-        template_env_dict[file_name] = markdown.markdown(template_markdown.decode('utf-8'))
+        template_env_dict[file_name] = template_markdown.decode('utf-8')
 
-    env = Environment(loader=DictLoader(template_env_dict), extensions=[FragmentHighlightExtension])
+    env = Environment(
+        loader=DictLoader(template_env_dict),
+        extensions=[
+            FragmentHighlightExtension,
+            FragmentGistExtension
+        ])
     env.filters['date_to_string'] = date_to_string
     env.filters['limit'] = limit
 
