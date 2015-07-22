@@ -385,6 +385,25 @@ autostart=true
 """ % (proj, port, os.getcwd(), log_file)
     sys.stdout.write(conf)
 
+@manager.command
+def new_post(title):
+    template = """---
+layout: post
+title: %s
+---
+
+
+""" % title
+    dt = datetime.datetime.now()
+    file_name = "%s-%02d-%02d-%s.md" % (dt.year, dt.month, dt.day, title)
+    dir_path = os.path.join(os.getcwd(), POSTS_FOLDER)
+    file_path = os.path.join(dir_path, file_name)
+    with open(file_path, 'w') as f:
+        f.write(template)
+    print template
+    os.system("open -a mou _post/%s" % file_name )
+
+
 
 @app.route('/hook', methods=['POST', 'GET'])
 def webhook():
