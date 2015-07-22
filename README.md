@@ -13,10 +13,10 @@ Static blog generator
 
 this command will create folder project_name and the structure of project.
 
----priject_name
- |----_layouts
- |----_posts
- |----_site
+    ---priject_name
+     |----_layouts
+     |----_posts
+     |----_site
  
  put markdown files in _post folder
  
