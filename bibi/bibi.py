@@ -270,7 +270,7 @@ def test(port):
 
 @manager.command
 def nginx_conf(domain):
-    return """
+    conf = """
 server {
  listen          80;
  server_name     %s;
@@ -280,6 +280,7 @@ server {
  }
 }
     """ % (domain, os.path.join(os.getcwd(), SITE_FOLDER))
+    sys.stdout.write(conf)
 
 
 @manager.command
