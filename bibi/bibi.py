@@ -5,12 +5,18 @@ __author__ = 'liming'
 import os
 import sys
 import datetime
+import logging
 import markdown
 from flask import Flask, jsonify
 from flask.ext.script import Manager
 from jinja2.loaders import DictLoader
-from jinja2 import Environment
-import logging
+from jinja2 import Environment, nodes
+from jinja2.ext import Extension
+from pygments import highlight
+from pygments.lexers import get_lexer_by_name, PythonLexer
+from pygments.formatters import HtmlFormatter
+from pygments.filters import VisibleWhitespaceFilter
+
 
 SITE_FOLDER = '_site'
 POSTS_FOLDER = '_post'
@@ -25,8 +31,46 @@ manager = Manager(app)
 proj = os.path.split(os.getcwd())[-1]
 
 
+class FragmentHighlightExtension(Extension):
+    # a set of names that trigger the extension.
+    tags = set(['highlight'])
+
+    def __init__(self, environment):
+        super(FragmentHighlightExtension, self).__init__(environment)
+
+        # add the defaults to the environment
+        environment.extend(
+            fragment_highlight_prefix='',
+            fragment_highlight=None
+        )
+
+    def parse(self, parser):
+        parser.stream.next()
+
+        args = [parser.parse_expression()]
+
+        if parser.stream.skip_if('comma'):
+            args.append(parser.parse_expression())
+        else:
+            args.append(nodes.Const(None))
+        lng_name = args[0].name
+
+        body = parser.parse_statements(['name:endhighlight'], drop_needle=True)
+        origin_str = body[0].nodes[0].data
+        lexer = get_lexer_by_name(lng_name)
+        lexer.filters.append(VisibleWhitespaceFilter())
+        result = highlight(origin_str, lexer, HtmlFormatter())
+        body[0].nodes[0].data = result
+
+        return body
+
+
 def date_to_string(date):
-    return u"%s年%sd月%s日" % (date.year, date.month, date.day)
+    return u"%s年%s月%s日" % (date.year, date.month, date.day)
+
+
+def limit(iterer, n):
+    return iterer[:n]
 
 
 def get_files(folder='_post', markdown=True):
@@ -100,7 +144,7 @@ def render_template(template, context):
     template.render(**context)
 
 
-def process_data(datas):
+def process_data(datas, process_template_dict):
     """
     处理POST数据
     :param datas: 待处理的数据列表
@@ -110,12 +154,15 @@ def process_data(datas):
     for file_name, data_str in datas:
         propertys, content_str = process_header(data_str)
         dt, dt_str, save_name = parse_filename(file_name)
+        name = os.path.splitext(file_name)[0]
+        template = process_template_dict.get(name).get("template")
         propertys.update(
             dict(
                 date=dt,
+                name = name,
                 file_name=save_name.decode('utf-8'),
                 dir=dt_str.decode('utf-8'),
-                content=markdown.markdown(content_str.decode('utf-8')),
+                content=template.render(content=""),
                 url=u"/%s/%s" % (dt_str.decode('utf-8'), save_name.decode('utf-8'))
             )
         )
@@ -152,12 +199,12 @@ def render_pages(layout, template_dict, **propertys):
 
 
 def render_post(post, site, template_dict):
-    layout = post.get('layout', '')
-    if layout not in template_dict:
-        print "post %s not define a layout [%s]" % (post.get('title'), layout)
+    name = post['name']
+    if name not in template_dict:
+        print "post %s not define a layout [%s]" % (post.get('title'), name)
         return
 
-    html_file = render_pages(layout, template_dict, content=post.get('content'), site=site, page=post, post=post)
+    html_file = render_pages(name, template_dict, content='', site=site, page=post, post=post)
 
     dir = post.get('dir')
     file_name = post.get('file_name')
@@ -234,8 +281,14 @@ def gen():
         template_dict[file_name] = dict(ppt=propertys, template=None)
         template_env_dict[file_name] = template_html.decode('utf-8')
 
-    env = Environment(loader=DictLoader(template_env_dict))
+    for file_name, data_markdown in markdowns:
+        propertys, template_markdown = process_header(data_markdown)
+        template_dict[file_name] = dict(ppt=propertys, template=None)
+        template_env_dict[file_name] = markdown.markdown(template_markdown.decode('utf-8'))
+
+    env = Environment(loader=DictLoader(template_env_dict), extensions=[FragmentHighlightExtension])
     env.filters['date_to_string'] = date_to_string
+    env.filters['limit'] = limit
 
     process_template_dict = {}
     for file_name, meta in template_dict.iteritems():
@@ -246,7 +299,7 @@ def gen():
 
     site = {}
     site['pages'] = process_page(pages)
-    posts = process_data(markdowns)
+    posts = process_data(markdowns, process_template_dict)
     sorted_posts = sorted(posts,key=lambda post:post.get('date'), reverse=True)
     site['posts'] = sorted_posts
 
