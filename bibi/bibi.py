@@ -32,7 +32,9 @@ proj = os.path.split(os.getcwd())[-1]
 
 
 class FragmentGistExtension(Extension):
-    # a set of names that trigger the extension.
+    """
+    支持贴入gist代码
+    """
     tags = set(['gist'])
 
     def __init__(self, environment):
@@ -45,7 +47,6 @@ class FragmentGistExtension(Extension):
             args.append(parser.parse_expression())
         else:
             args.append(nodes.Const(None))
-        print args
 
         gist_id = "%s/%s" % (args[0].left.name, args[0].right.value)
         node = nodes.TemplateData()
