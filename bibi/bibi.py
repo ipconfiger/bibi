@@ -10,6 +10,7 @@ from flask import Flask, jsonify
 from flask.ext.script import Manager
 from jinja2.loaders import DictLoader
 from jinja2 import Environment
+import logging
 
 SITE_FOLDER = '_site'
 POSTS_FOLDER = '_post'
@@ -302,9 +303,12 @@ autostart=true
 @app.route('/hook', methods=['POST', 'GET'])
 def webhook():
     import git
+    logging.error("get notification!")
     g = git.cmd.Git(os.getcwd())
     g.pull()
+    logging.error("git pull ok!")
     gen()
+    logging.error("finish generate!")
     return jsonify(status="ok")
 
 
