@@ -89,4 +89,4 @@ will show 5 posts
 
     $bibi new_post post_name
     
-if you use mac,this command will try to open mou markdown editor to edit new file
+if you use mac,this command will try to open markdown editor to edit new file
