@@ -401,7 +401,7 @@ title: %s
     with open(file_path, 'w') as f:
         f.write(template)
     print template
-    os.system("open -a mou _post/%s" % file_name )
+    os.system("open _post/%s" % file_name )
 
 
 
