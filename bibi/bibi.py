@@ -7,6 +7,7 @@ import sys
 import datetime
 import logging
 import markdown
+import yaml
 from flask import Flask, jsonify
 from flask.ext.script import Manager
 from jinja2.loaders import DictLoader
@@ -25,6 +26,7 @@ INCLUDE_FOLDER = '_include'
 CSS_FOLDER = '_css'
 MARKDOWN_FILES = ['md', 'markdown']
 HTML_FILES = ['html', 'htm']
+CONFIG = '_config.yaml'
 
 app = Flask(__name__, static_url_path='')
 manager = Manager(app)
@@ -94,172 +96,6 @@ def limit(iterer, n):
     return iterer[:n]
 
 
-def get_files(folder='_post', markdown=True):
-    """
-    获取文件
-    :param folder:目录名
-    :param markdown:是否是markdown文件
-    :return: [[file name, file data]]
-    """
-    files = []
-    path = os.path.join(os.getcwd(), folder)
-    if not os.path.exists(path):
-        print "Not in project directory"
-    file_paths = os.listdir(path)
-    for file_name in file_paths:
-        if markdown:
-            if file_name.split('.')[-1] not in MARKDOWN_FILES:
-                continue
-        else:
-            if file_name.split('.')[-1] not in HTML_FILES:
-                continue
-        file_path = os.path.join(path, file_name)
-        if os.path.exists(file_path):
-            with open(file_path, 'r') as f:
-                files.append([file_name, f.read()])
-    return files
-
-
-def process_header(file):
-    """
-    处理文件头部meta数据
-    :param file:文件内容
-    :return: meta字典, 后面的内容
-    """
-    lines = file.split('\n')
-    if not lines[0].startswith('---'):
-        return {}, file
-    idx = 0
-    propertys = {}
-    for line in lines[1:]:
-        if line.startswith('---'):
-            idx+=1
-            break
-        else:
-            key, value = line.split(':')[:2]
-            propertys[key.strip()] = value.strip().decode('utf-8')
-            idx+=1
-    return propertys, "\n".join(lines[idx+1:])
-
-
-def parse_filename(file_name):
-    """
-    从文件名提取日期和后缀
-    :param file_name: 文件名
-    :return:日期对象，日期字符串（用作目录名）, 文件名
-    """
-    slice = file_name.split('-')
-    date = datetime.datetime(*map(int, slice[:3]))
-    title_name = os.path.splitext("-".join(slice[3:]))[0]
-    date_str = "-".join(slice[:3])
-    return date, date_str, "%s.html" % title_name
-
-
-def render_template(template, context):
-    """
-    渲染页面
-    :param template: 模板对象
-    :param context: 环境变量
-    :return:
-    """
-    template.render(**context)
-
-
-def process_data(datas, process_template_dict):
-    """
-    处理POST数据
-    :param datas: 待处理的数据列表
-    :return: 处理完成的数据列表
-    """
-    results = []
-    for file_name, data_str in datas:
-        propertys, content_str = process_header(data_str)
-        dt, dt_str, save_name = parse_filename(file_name)
-        name = os.path.splitext(file_name)[0]
-        template = process_template_dict.get(name).get("template")
-        propertys.update(
-            dict(
-                date=dt,
-                name = name,
-                file_name=save_name.decode('utf-8'),
-                dir=dt_str.decode('utf-8'),
-                content=markdown.markdown(template.render(content="")),
-                url=u"/%s/%s" % (dt_str.decode('utf-8'), save_name.decode('utf-8'))
-            )
-        )
-        results.append(propertys)
-    return results
-
-def process_page(datas):
-    results = []
-    for file_name, data_str in datas:
-        propertys, content_str = process_header(data_str)
-        propertys.update(
-            dict(
-                file_name=file_name,
-                content=content_str.decode('utf-8'),
-                url=u"/%s" % file_name.decode('utf-8')
-            )
-        )
-        results.append(propertys)
-    return results
-
-
-def render_pages(layout, template_dict, **propertys):
-    template_item = template_dict.get(layout, None)
-    if template_item:
-        template_ppt = template_item.get('ppt')
-        template = template_item.get('template')
-        html_file = template.render(**propertys)
-        if propertys.get("content") == "":
-            html_file = markdown.markdown(html_file)
-        if template_ppt.get('layout', None):
-            propertys.update(dict(content=html_file))
-            return render_pages(template_ppt.get('layout'), template_dict, **propertys)
-        return html_file
-    else:
-        return propertys.get("content", '')
-
-
-def render_post(post, site, template_dict):
-    name = post['name']
-    if name not in template_dict:
-        print "post %s not define a layout [%s]" % (post.get('title'), name)
-        return
-
-    html_file = render_pages(name, template_dict, content='', site=site, page=post, post=post)
-
-    dir = post.get('dir')
-    file_name = post.get('file_name')
-    base_folder = os.path.join(os.getcwd(), SITE_FOLDER)
-    dir_folder = os.path.join(base_folder, dir)
-    if not os.path.exists(dir_folder):
-        os.mkdir(dir_folder)
-    file_path = os.path.join(dir_folder, file_name)
-    with open(file_path, 'w+') as f:
-        f.write(html_file.encode('utf-8'))
-    try:
-        print u"post:%s process done!" % post.get('title')
-    except:
-        pass
-
-
-def render_single_page(page, site, template_dict):
-    file_name = page.get('file_name')
-    layout = os.path.splitext(file_name)[0]
-    if layout not in template_dict:
-        print "page %s not define a layout [%s]" % (page.get('file_name'), layout)
-        return
-    html_file = render_pages(layout, template_dict, content=page.get('content'), site=site, page=page, post=page)
-    base_folder = os.path.join(os.getcwd(), SITE_FOLDER)
-    file_path = os.path.join(base_folder, file_name)
-    with open(file_path, 'w+') as f:
-        f.write(html_file.encode('utf-8'))
-    try:
-        print u"page:%s process done!" % file_name
-    except:
-        pass
-
 @manager.command
 def project(name):
     """
@@ -282,67 +118,270 @@ def project(name):
     print "project %s inited" % name
 
 
+class Page(object):
+    url = None
+    key = None
+    layout = None
+    directory = None
+    template_str = None
+    template_instance = None
+
+
+class Post(object):
+    url = None
+    title = None
+    content = None
+    date = None
+    author = None
+    tags = None
+
+class Paginator(object):
+    posts = []
+    page = None
+    per_page = None
+    total_posts = None
+    total_pages = None
+    previous_page = None
+    previous_page_path = None
+    next_page = None
+    next_page_path = None
+
+class Site(object):
+    pages = []
+    posts = []
+    tags = []
+    config = {}
+
+class Generator(object):
+    """
+    页面生成器
+    """
+    def __init__(self):
+        self.site = Site()
+        self.site.pages = []
+        self.site.posts = []
+        self.site.tags = ()
+        self.templates = {}
+        self.context_propertys = {}
+        self.context_instances = {}
+        self.template_name_map = {}
+        self._get_files(LAYOUTS_FOLDER, allow_ext=['.html', '.htm'])
+        self._get_files(INCLUDE_FOLDER, allow_ext=['.html', '.htm'])
+        self._get_files("", allow_ext=['.html', '.htm', '.xml', '.md', '.markdown'])
+        self._get_files(POSTS_FOLDER, allow_ext=['.md', '.markdown'])
+        self.paginator = None
+
+        config_path = os.path.join(os.getcwd(), CONFIG)
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = yaml.load(f.read())
+                for k, v in config.iteritems():
+                    if k == 'paginate':
+                        self.paginator = Paginator()
+
+                    setattr(self.site, k, v)
+
+        self.env = Environment(
+            loader=DictLoader(self.templates),
+            extensions=[
+                FragmentHighlightExtension,
+                FragmentGistExtension
+            ]
+        )
+        self.env.filters['date_to_string'] = date_to_string
+        self.env.filters['limit'] = limit
+
+
+    def _process_header(self, file):
+        """
+        处理文件头部meta数据
+        :param file:文件内容
+        :return: meta字典, 后面的内容
+        """
+        lines = file.split('\n')
+        if not lines[0].startswith('---'):
+            return {}, file
+        idx = 0
+        propertys = {}
+        for line in lines[1:]:
+            if line.startswith('---'):
+                idx+=1
+                break
+            else:
+                key, value = line.split(':')[:2]
+                propertys[key.strip()] = value.strip().decode('utf-8')
+                idx+=1
+        return propertys, "\n".join(lines[idx+1:])
+
+
+    def _parse_filename(self, file_name):
+        """
+        从文件名提取日期和后缀
+        :param file_name: 文件名
+        :return:日期对象，日期字符串（用作目录名）, 文件名
+        """
+        slice = file_name.split('-')
+        date = datetime.datetime(*map(int, slice[:3]))
+        title_name = os.path.splitext("-".join(slice[3:]))[0]
+        date_str = "-".join(slice[:3])
+        return date, date_str, "%s.html" % title_name
+
+
+    def _get_files(self, folder='_post', allow_ext=None):
+        """
+        获取文件
+        :param folder:目录名
+        :param markdown:是否是markdown文件
+        :return: [[file name, file data]]
+        """
+        path = os.path.join(os.getcwd(), folder)
+        if not os.path.exists(path):
+            print "Not in project directory"
+        file_paths = os.listdir(path)
+        for file_name in file_paths:
+            if os.path.splitext(file_name)[1] not in allow_ext:
+                continue
+            file_path = os.path.join(path, file_name)
+            if os.path.exists(file_path):
+                with open(file_path, 'r') as f:
+                    file_content = f.read()
+                    propertys, template_html = self._process_header(file_content)
+                    if folder==POSTS_FOLDER:
+                        propertys.update(dict(is_content=True))
+                    else:
+                        propertys.update(dict(is_content=False))
+                    if folder=='':
+                        propertys.update(dict(is_page=True))
+                    else:
+                        propertys.update(dict(is_page=False))
+                    self.templates[file_name] = template_html.decode('utf-8')
+                    self.template_name_map[os.path.splitext(file_name)[0]] = file_name
+                    self.context_propertys[file_name] = propertys
+
+
+    def _render(self, layout, context):
+        if layout and layout in self.template_name_map:
+            template = self.env.get_template(self.template_name_map.get(layout))
+            html = template.render(**context)
+            context['content'] = html
+            file_name = self.template_name_map.get(layout)
+            ppt = self.context_propertys.get(file_name)
+            if ppt:
+                return self._render(ppt.get('layout'), context)
+            return html
+        return context['content']
+
+
+    def _render_page(self, context):
+        if context['content']:
+            layout = context['page'].layout
+        else:
+            layout = os.path.splitext(context['page'].file_name)[0]
+
+        if self.paginator and context['page'].file_name in ['index.html', 'index.htm']:
+            page_size = self.site.paginate
+            self.paginator.total_posts = len(self.site.posts)
+            self.paginator.total_pages = self.paginator.total_posts / page_size
+            for pid in range(self.paginator.total_pages):
+                file_name = context['page'].file_name
+                ext = os.path.splitext(file_name)[1]
+                self.paginator.page = pid+1
+                self.paginator.posts = self.site.posts[pid*page_size: (pid+1)*page_size]
+                self.paginator.previous_page = pid if pid else None
+                self.paginator.next_page = pid+1
+                if pid>0:
+                    self.paginator.previous_page_path = "/%s" % file_name
+                    if pid<self.paginator.total_pages:
+                        self.paginator.next_page_path = "/%s_%s%s" % (layout, self.paginator.page+1, ext)
+                else:
+                    if pid<self.paginator.total_pages:
+                        self.paginator.next_page_path = "/%s_%s%s" % (layout, self.paginator.page+1, ext)
+                html = self._render(layout, context)
+                self.dump_file(html, context)
+        else:
+            html = self._render(layout, context)
+            self.dump_file(html, context)
+
+
+
+    def dump_file(self, html, context):
+        base_path = os.path.join(os.getcwd(), SITE_FOLDER)
+        if context['post']:
+            dir_path = os.path.join(base_path, context['page'].directory)
+            if not os.path.exists(dir_path):
+                os.mkdir(dir_path)
+            file_path = os.path.join(dir_path, context['page'].file_name)
+        else:
+            if self.paginator and context['page'].file_name in ['index.html', 'index.htm']:
+                if self.paginator.page>1:
+                    file_name = context['page'].file_name
+                    file_path = os.path.join(base_path,"%s_%s%s" % (
+                        os.path.splitext(file_name)[0],
+                        self.paginator.page,
+                        os.path.splitext(file_name)[1]
+                    ))
+                else:
+                    file_path = os.path.join(base_path, context['page'].file_name)
+            else:
+                file_path = os.path.join(base_path, context['page'].file_name)
+        with open(file_path, 'w+') as f:
+            f.write(html.encode('utf8'))
+        print context['page'].file_name, "process ok!"
+
+
+
+
+    def parse_file(self):
+        contexts = []
+        for file_name, property in self.context_propertys.iteritems():
+            if 'layout' not in property:
+                continue
+            if property.get('is_content') or property.get('is_page'):
+                page = Page()
+                page.url = u"/%s" % file_name.decode('utf-8')
+                page.key = file_name
+                page.directory = ''
+                page.file_name = file_name
+                page.layout = property.get('layout')
+                page.template_instance = self.env.get_template(file_name)
+                page.template_str = self.templates.get(file_name)
+                context = dict(page=page, content="", post=None, site=self.site, paginator=self.paginator)
+
+                if property.get('is_content'):
+                    dt, dt_str, save_name = self._parse_filename(file_name)
+                    post = Post()
+                    post.url = u"/%s/%s" % (dt_str.decode('utf-8'), save_name.decode('utf-8'))
+                    post.date = dt
+                    post.title = property.get('title')
+                    post.author = property.get('author', 'anonymous')
+                    post.content = markdown.markdown(page.template_instance.render(content=''))
+                    post.tags = set(property.get('tags', '').split(','))
+                    self.site.tags = set(list(self.site.tags) + list(post.tags))
+                    page.file_name = save_name
+                    page.directory = dt_str
+                    context['post'] = post
+                    context['content'] = post.content
+                    self.site.posts.append(post)
+                if property.get('is_page'):
+                    self.site.pages.append(page)
+                contexts.append(context)
+
+        self.site.posts.sort(key=lambda item:item.date, reverse=True)
+
+        for context in contexts:
+            self._render_page(context)
+
+
+
+
 @manager.command
 def gen():
     """
     生成内容
     :return:
     """
-    templates = get_files(folder=LAYOUTS_FOLDER, markdown=False)
-    pages = get_files(folder='', markdown=False)
-    markdowns = get_files(folder=POSTS_FOLDER, markdown=True)
-    inludes = get_files(folder=INCLUDE_FOLDER, markdown=False)
-
-    template_env_dict = {}
-    template_dict = {}
-    for file_name, temp_file in templates:
-        propertys, template_html = process_header(temp_file)
-        template_dict[file_name] = dict(ppt=propertys, template=None)
-        template_env_dict[file_name] = template_html.decode('utf-8')
-
-    for file_name, page_html in pages:
-        propertys, template_html = process_header(page_html)
-        template_dict[file_name] = dict(ppt=propertys, template=None)
-        template_env_dict[file_name] = template_html.decode('utf-8')
-
-    for file_name, data_markdown in markdowns:
-        propertys, template_markdown = process_header(data_markdown)
-        template_dict[file_name] = dict(ppt=propertys, template=None)
-        template_env_dict[file_name] = template_markdown.decode('utf-8')
-
-    for file_name, inlude_str in inludes:
-        propertys, inlude_html = process_header(data_markdown)
-        template_dict[file_name] = dict(ppt=propertys, template=None)
-        template_env_dict[file_name] = inlude_html.decode('utf-8')
-
-
-    env = Environment(
-        loader=DictLoader(template_env_dict),
-        extensions=[
-            FragmentHighlightExtension,
-            FragmentGistExtension
-        ])
-    env.filters['date_to_string'] = date_to_string
-    env.filters['limit'] = limit
-
-    process_template_dict = {}
-    for file_name, meta in template_dict.iteritems():
-        template = env.get_template(file_name)
-        propertys = template_dict[file_name]
-        propertys["template"] = template
-        process_template_dict[os.path.splitext(file_name)[0]] = propertys
-
-    site = {}
-    site['pages'] = process_page(pages)
-    posts = process_data(markdowns, process_template_dict)
-    sorted_posts = sorted(posts,key=lambda post:post.get('date'), reverse=True)
-    site['posts'] = sorted_posts
-
-    for post in posts:
-        render_post(post, site, process_template_dict)
-
-    for page in site.get('pages'):
-        render_single_page(page, site, process_template_dict)
+    generator = Generator()
+    generator.parse_file()
 
     print "all process done"
 
