@@ -22,6 +22,7 @@ SITE_FOLDER = '_site'
 POSTS_FOLDER = '_post'
 LAYOUTS_FOLDER = '_layouts'
 INCLUDE_FOLDER = '_include'
+CSS_FOLDER = '_css'
 MARKDOWN_FILES = ['md', 'markdown']
 HTML_FILES = ['html', 'htm']
 
@@ -290,6 +291,7 @@ def gen():
     templates = get_files(folder=LAYOUTS_FOLDER, markdown=False)
     pages = get_files(folder='', markdown=False)
     markdowns = get_files(folder=POSTS_FOLDER, markdown=True)
+    inludes = get_files(folder=INCLUDE_FOLDER, markdown=False)
 
     template_env_dict = {}
     template_dict = {}
@@ -307,6 +309,12 @@ def gen():
         propertys, template_markdown = process_header(data_markdown)
         template_dict[file_name] = dict(ppt=propertys, template=None)
         template_env_dict[file_name] = template_markdown.decode('utf-8')
+
+    for file_name, inlude_str in inludes:
+        propertys, inlude_html = process_header(data_markdown)
+        template_dict[file_name] = dict(ppt=propertys, template=None)
+        template_env_dict[file_name] = inlude_html.decode('utf-8')
+
 
     env = Environment(
         loader=DictLoader(template_env_dict),
