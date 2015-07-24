@@ -244,9 +244,11 @@ class Generator(object):
                 continue
             file_path = os.path.join(path, file_name)
             if os.path.exists(file_path):
+                dt = datetime.datetime.fromtimestamp(os.stat(file_path).st_mtime)
                 with open(file_path, 'r') as f:
                     file_content = f.read()
                     propertys, template_html = self._process_header(file_content)
+                    propertys.update(dict(date=dt))
                     if folder==POSTS_FOLDER:
                         propertys.update(dict(is_content=True))
                     else:
@@ -342,6 +344,7 @@ class Generator(object):
                 page.url = u"/%s" % file_name.decode('utf-8')
                 page.key = file_name
                 page.directory = ''
+                page.date = property.get('date')
                 page.file_name = file_name
                 page.layout = property.get('layout')
                 page.template_instance = self.env.get_template(file_name)
