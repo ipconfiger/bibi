@@ -11,7 +11,7 @@ import markdown
 import yaml
 from flask import Flask, jsonify
 from flask.ext.script import Manager
-from jinja2.loaders import DictLoader
+from jinja2.loaders import DictLoader, FunctionLoader
 from jinja2 import Environment, nodes
 from jinja2.ext import Extension
 from pygments import highlight
@@ -124,6 +124,7 @@ class Page(object):
     key = None
     layout = None
     directory = None
+    title = None
     date = None
     template_str = None
     template_instance = None
@@ -167,6 +168,7 @@ class Generator(object):
         self.context_propertys = {}
         self.context_instances = {}
         self.template_name_map = {}
+        self.includes = []
         self._get_files(LAYOUTS_FOLDER, allow_ext=['.html', '.htm'])
         self._get_files(INCLUDE_FOLDER, allow_ext=['.html', '.htm'])
         self._get_files("", allow_ext=['.html', '.htm', '.xml', '.md', '.markdown'])
@@ -182,13 +184,23 @@ class Generator(object):
                         self.paginator = Paginator()
 
                     setattr(self.site, k, v)
+        self.config_env()
 
+
+    def load_template(self, name):
+        if name in self.templates:
+            return self.templates.get(name)
+        return ""
+
+    def config_env(self):
         self.env = Environment(
-            loader=DictLoader(self.templates),
+            loader=FunctionLoader(self.load_template),
             extensions=[
                 FragmentHighlightExtension,
                 FragmentGistExtension
-            ]
+            ],
+            auto_reload=True,
+            cache_size=0
         )
         self.env.filters['date_to_string'] = date_to_string
         self.env.filters['limit'] = limit
@@ -261,6 +273,9 @@ class Generator(object):
                     self.templates[file_name] = template_html.decode('utf-8')
                     self.template_name_map[os.path.splitext(file_name)[0]] = file_name
                     self.context_propertys[file_name] = propertys
+
+                    if folder == INCLUDE_FOLDER:
+                        self.includes.append(file_name)
 
 
     def _render(self, layout, context):
@@ -367,6 +382,7 @@ class Generator(object):
                 page.url = u"/%s" % file_name.decode('utf-8')
                 page.key = file_name
                 page.directory = ''
+                page.title = property.get('title', u'')
                 page.date = property.get('date')
                 page.file_name = file_name
                 page.layout = property.get('layout')
@@ -391,15 +407,14 @@ class Generator(object):
                     context['content'] = post.content
                     self.site.posts.append(post)
                 if property.get('is_page'):
-                    self.site.pages.append(page)
+                    if not os.path.splitext(file_name)[0] == 'index':
+                        self.site.pages.append(page)
                 contexts.append(context)
 
         self.site.posts.sort(key=lambda item:item.date, reverse=True)
 
         for context in contexts:
             self._render_page(context)
-
-
 
 
 @manager.command
