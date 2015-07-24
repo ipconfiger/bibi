@@ -333,12 +333,27 @@ class Generator(object):
         print context['page'].file_name, "process ok!"
 
 
+    def copytree(self, src, dst, symlinks=False, ignore=None):
+        for item in os.listdir(src):
+            s = os.path.join(src, item)
+            d = os.path.join(dst, item)
+            if os.path.isdir(s):
+                shutil.copytree(s, d, symlinks, ignore)
+            else:
+                shutil.copy2(s, d)
+
     def move_ext_dictionary(self):
         paths = os.listdir(os.getcwd())
         tar_path = os.path.join(os.getcwd(), SITE_FOLDER)
-        for path in paths:
-            if not os.path.split(path)[1].startswith("_") and not os.path.isfile(path):
-                shutil.copytree(path, os.path.join(tar_path, os.path.split(path)[0]))
+        for filename in paths:
+            path = os.path.join(os.getcwd(), filename)
+            dir_name = os.path.split(path)[1]
+            if not dir_name.startswith("_") and not dir_name.startswith(".") and not os.path.isfile(path):
+                tar_dir = os.path.join(tar_path, dir_name)
+                if not os.path.exists(tar_dir):
+                    os.mkdir(tar_dir)
+                print "copy", path, "to", tar_dir
+                self.copytree(path, tar_dir)
 
 
     def parse_file(self):
