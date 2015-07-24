@@ -6,6 +6,7 @@ import os
 import sys
 import datetime
 import logging
+import shutil
 import markdown
 import yaml
 from flask import Flask, jsonify
@@ -332,9 +333,16 @@ class Generator(object):
         print context['page'].file_name, "process ok!"
 
 
+    def move_ext_dictionary(self):
+        paths = os.listdir(os.getcwd())
+        tar_path = os.path.join(os.getcwd(), SITE_FOLDER)
+        for path in paths:
+            if not os.path.split(path)[1].startswith("_") and not os.path.isfile(path):
+                shutil.copytree(path, tar_path)
 
 
     def parse_file(self):
+        self.move_ext_dictionary()
         contexts = []
         for file_name, property in self.context_propertys.iteritems():
             if 'layout' not in property:
