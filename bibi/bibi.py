@@ -338,7 +338,7 @@ class Generator(object):
         tar_path = os.path.join(os.getcwd(), SITE_FOLDER)
         for path in paths:
             if not os.path.split(path)[1].startswith("_") and not os.path.isfile(path):
-                shutil.copytree(path, tar_path)
+                shutil.copytree(path, os.path.join(tar_path, os.path.split(path)[0]))
 
 
     def parse_file(self):
