@@ -123,6 +123,7 @@ class Page(object):
     key = None
     layout = None
     directory = None
+    date = None
     template_str = None
     template_instance = None
 
@@ -359,6 +360,7 @@ class Generator(object):
                     self.site.tags = set(list(self.site.tags) + list(post.tags))
                     page.file_name = save_name
                     page.directory = dt_str
+                    post.date = dt
                     context['post'] = post
                     context['content'] = post.content
                     self.site.posts.append(post)
