@@ -2,9 +2,13 @@
 Static blog generator
 
 -------------------
-本来今天下午打算增加个scss生成的功能好自动从jekyll的模板里自动生成css，但是试用过一堆python的scss库后，我被自己蠢哭了，这堆玩意儿不是为我这种等级的智商的人准备的，所以可能需要自己写一个scss解析的库
 
 分页支持已经提供了，文档回头写，基本上和jekyll差不多
+新增加了一指加入disqus评论的功能，只需要
+
+    {{ 'disqus short name' | disqus }}
+    
+就ok了
 
 ## Useage
 
