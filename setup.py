@@ -4,7 +4,7 @@ __author__ = 'liming'
 from setuptools import setup
 
 setup(name='bibi',
-      version='0.1.5',
+      version='0.1.6',
       description='Simple way to publish your blog',
       url='https://github.com/ipconfiger/bibi',
       author='Alexander.Li',
