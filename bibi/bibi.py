@@ -90,11 +90,40 @@ class FragmentHighlightExtension(Extension):
 
 
 def date_to_string(date):
+    """
+    格式化日期的过滤器
+    :param date: 日期
+    :return:日期字符串
+    """
     return u"%s年%s月%s日" % (date.year, date.month, date.day)
 
 
 def limit(iterer, n):
+    """
+    限制输出序列数量的过滤器
+    :param iterer: 序列
+    :param n: 限制数量
+    :return:裁剪后序列
+    """
     return iterer[:n]
+
+
+def disqus(short_name):
+    return """<div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = '%s'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+""" % short_name
 
 
 @manager.command
@@ -120,6 +149,9 @@ def project(name):
 
 
 class Page(object):
+    """
+    page对象
+    """
     url = None
     key = None
     layout = None
@@ -131,6 +163,9 @@ class Page(object):
 
 
 class Post(object):
+    """
+    post对象
+    """
     url = None
     title = None
     content = None
@@ -139,6 +174,9 @@ class Post(object):
     tags = None
 
 class Paginator(object):
+    """
+    分页器对象
+    """
     posts = []
     page = None
     per_page = None
@@ -150,6 +188,9 @@ class Paginator(object):
     next_page_path = None
 
 class Site(object):
+    """
+    站点对象
+    """
     pages = []
     posts = []
     tags = []
@@ -188,22 +229,32 @@ class Generator(object):
 
 
     def load_template(self, name):
+        """
+        加载模板的函数
+        :param name:模板文件名
+        :return:
+        """
         if name in self.templates:
             return self.templates.get(name)
         return ""
 
     def config_env(self):
+        """
+        设置模板环境
+        :return:
+        """
         self.env = Environment(
             loader=FunctionLoader(self.load_template),
             extensions=[
                 FragmentHighlightExtension,
-                FragmentGistExtension
+                FragmentGistExtension,
             ],
             auto_reload=True,
             cache_size=0
         )
         self.env.filters['date_to_string'] = date_to_string
         self.env.filters['limit'] = limit
+        self.env.filters['disqus'] = disqus
 
 
     def _process_header(self, file):
@@ -279,6 +330,9 @@ class Generator(object):
 
 
     def _render(self, layout, context):
+        """
+        递归渲染模板
+        """
         if layout and layout in self.template_name_map:
             template = self.env.get_template(self.template_name_map.get(layout))
             html = template.render(**context)
@@ -292,6 +346,9 @@ class Generator(object):
 
 
     def _render_page(self, context):
+        """
+        渲染页面
+        """
         if context['content']:
             layout = context['page'].layout
         else:
@@ -324,6 +381,9 @@ class Generator(object):
 
 
     def dump_file(self, html, context):
+        """
+        输出到文件
+        """
         base_path = os.path.join(os.getcwd(), SITE_FOLDER)
         if context['post']:
             dir_path = os.path.join(base_path, context['page'].directory)
