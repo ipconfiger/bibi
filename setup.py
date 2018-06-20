@@ -4,7 +4,7 @@ __author__ = 'liming'
 from setuptools import setup
 
 setup(name='bibi',
-      version='0.1.6',
+      version='0.2.0',
       description='Simple way to publish your blog',
       url='https://github.com/ipconfiger/bibi',
       author='Alexander.Li',
@@ -13,12 +13,10 @@ setup(name='bibi',
       packages=['bibi'],
       install_requires=[
           'markdown',
-          'importlib',
-          'flask',
-          'flask-script',
-          'GitPython',
-          'pygments',
-          'PyYAML'
+          'jinja2',
+          'click',
+          'PyYAML',
+          'six'
       ],
       entry_points = {
         'console_scripts': ['bibi=bibi.bibi:main'],

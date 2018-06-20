@@ -5,34 +5,27 @@ __author__ = 'liming'
 import os
 import sys
 import datetime
-import logging
 import shutil
 import markdown
 import yaml
-from flask import Flask, jsonify
-from flask.ext.script import Manager
-from jinja2.loaders import DictLoader, FunctionLoader
+import click
+
+from six import iteritems
+from jinja2.loaders import FunctionLoader
 from jinja2 import Environment, nodes
 from jinja2.ext import Extension
-from pygments import highlight
-from pygments.lexers import get_lexer_by_name, PythonLexer
-from pygments.formatters import HtmlFormatter
-from pygments.filters import VisibleWhitespaceFilter
+
 
 
 SITE_FOLDER = '_site'
 POSTS_FOLDER = '_post'
 LAYOUTS_FOLDER = '_layouts'
 INCLUDE_FOLDER = '_include'
-CSS_FOLDER = '_css'
+ASSETS_FOLDER = '_assets'
 MARKDOWN_FILES = ['md', 'markdown']
 HTML_FILES = ['html', 'htm']
 CONFIG = '_config.yaml'
 
-app = Flask(__name__, static_url_path='')
-manager = Manager(app)
-
-proj = os.path.split(os.getcwd())[-1]
 
 
 class FragmentGistExtension(Extension):
@@ -57,38 +50,6 @@ class FragmentGistExtension(Extension):
         node.data = '<script src="https://gist.github.com/%s.js"></script>' % gist_id
         return node
 
-
-class FragmentHighlightExtension(Extension):
-    """
-    代码高亮
-    """
-    tags = set(['highlight'])
-
-    def __init__(self, environment):
-        super(FragmentHighlightExtension, self).__init__(environment)
-
-
-    def parse(self, parser):
-        parser.stream.next()
-
-        args = [parser.parse_expression()]
-
-        if parser.stream.skip_if('comma'):
-            args.append(parser.parse_expression())
-        else:
-            args.append(nodes.Const(None))
-        lng_name = args[0].name
-
-        body = parser.parse_statements(['name:endhighlight'], drop_needle=True)
-        origin_str = body[0].nodes[0].data
-        lexer = get_lexer_by_name(lng_name)
-        lexer.filters.append(VisibleWhitespaceFilter())
-        result = highlight(origin_str, lexer, HtmlFormatter())
-        body[0].nodes[0].data = result
-
-        return body
-
-
 def date_to_string(date):
     """
     格式化日期的过滤器
@@ -108,6 +69,23 @@ def limit(iterer, n):
     return iterer[:n]
 
 
+def sorts(iterer, property, direction):
+    """
+    根据meta属性排序
+    :param iterer:
+    :type iterer:
+    :param property:
+    :type property:
+    :param direction:
+    :type direction:
+    :return:
+    :rtype:
+    """
+    if direction == 'desc':
+        return sorted(iterer, key=lambda item: item.meta[property], reverse=True)
+    return sorted(iterer, key=lambda item: item.meta[property])
+
+
 def disqus(short_name):
     return """<div id="disqus_thread"></div>
     <script type="text/javascript">
@@ -125,29 +103,6 @@ def disqus(short_name):
     <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
 """ % short_name
 
-
-@manager.command
-def project(name):
-    """
-    创建一个project
-    :param name: 站点的名字
-    :return:
-    """
-    path = os.path.join(os.getcwd(), name)
-    if not os.path.exists(path):
-        os.mkdir(path)
-    post_path = os.path.join(path, POSTS_FOLDER)
-    os.mkdir(post_path)
-    layout_path = os.path.join(path, LAYOUTS_FOLDER)
-    os.mkdir(layout_path)
-    site_path = os.path.join(path, SITE_FOLDER)
-    os.mkdir(site_path)
-    include_path = os.path.join(path, INCLUDE_FOLDER)
-    os.mkdir(include_path)
-
-    print "project %s inited" % name
-
-
 class Page(object):
     """
     page对象
@@ -160,6 +115,9 @@ class Page(object):
     date = None
     template_str = None
     template_instance = None
+    page_size = None
+    page_filter = None
+    page_sort = None
 
 
 class Post(object):
@@ -172,6 +130,7 @@ class Post(object):
     date = None
     author = None
     tags = None
+    meta = None
 
 class Paginator(object):
     """
@@ -195,6 +154,7 @@ class Site(object):
     posts = []
     tags = []
     config = {}
+    paginate = 10
 
 class Generator(object):
     """
@@ -214,16 +174,13 @@ class Generator(object):
         self._get_files(INCLUDE_FOLDER, allow_ext=['.html', '.htm'])
         self._get_files("", allow_ext=['.html', '.htm', '.xml', '.md', '.markdown'])
         self._get_files(POSTS_FOLDER, allow_ext=['.md', '.markdown'])
-        self.paginator = None
+        self.paginator = Paginator()
 
         config_path = os.path.join(os.getcwd(), CONFIG)
         if os.path.exists(config_path):
             with open(config_path, 'r') as f:
                 config = yaml.load(f.read())
-                for k, v in config.iteritems():
-                    if k == 'paginate':
-                        self.paginator = Paginator()
-
+                for k, v in iteritems(config):
                     setattr(self.site, k, v)
         self.config_env()
 
@@ -246,7 +203,6 @@ class Generator(object):
         self.env = Environment(
             loader=FunctionLoader(self.load_template),
             extensions=[
-                FragmentHighlightExtension,
                 FragmentGistExtension,
             ],
             auto_reload=True,
@@ -255,6 +211,7 @@ class Generator(object):
         self.env.filters['date_to_string'] = date_to_string
         self.env.filters['limit'] = limit
         self.env.filters['disqus'] = disqus
+        self.env.filters['sort'] = sorts
 
 
     def _process_header(self, file):
@@ -273,7 +230,9 @@ class Generator(object):
                 idx+=1
                 break
             else:
-                key, value = line.split(':')[:2]
+                spliter_idx = line.index(':')
+                key = line[:spliter_idx].strip()
+                value = line[spliter_idx + 1:].strip()
                 propertys[key.strip()] = value.strip().decode('utf-8')
                 idx+=1
         return propertys, "\n".join(lines[idx+1:])
@@ -301,7 +260,7 @@ class Generator(object):
         """
         path = os.path.join(os.getcwd(), folder)
         if not os.path.exists(path):
-            print "Not in project directory"
+            click.echo("Not in project directory")
         file_paths = os.listdir(path)
         for file_name in file_paths:
             if os.path.splitext(file_name)[1] not in allow_ext:
@@ -354,17 +313,30 @@ class Generator(object):
         else:
             layout = os.path.splitext(context['page'].file_name)[0]
 
-        if self.paginator and context['page'].file_name in ['index.html', 'index.htm']:
-            page_size = self.site.paginate
-            self.paginator.total_posts = len(self.site.posts)
+        if self.paginator and context['page'].page_size > 0:
+            click.echo('paging......')
+            page_size = context['page'].page_size
+            all_items = self.site.posts
+            if context['page'].page_sort:
+                key, direction = context['page'].page_sort.split('=')
+                if direction.lower() == 'desc':
+                    all_items = sorted(all_items, key=lambda item: item.meta[key], reverse=True)
+                else:
+                    all_items = sorted(all_items, key=lambda item: item.meta [key])
+            if context['page'].page_filter:
+                query_dt = dict([sq.split('=') for sq in context ['page'].page_filter.split('&')])
+                for key, value in iteritems(query_dt):
+                    all_items = [item for item in all_items if item.meta.get(key.strip(), '')==value.strip()]
+
+            self.paginator.total_posts = len(all_items)
             self.paginator.total_pages = self.paginator.total_posts / page_size
             for pid in range(self.paginator.total_pages):
                 file_name = context['page'].file_name
                 ext = os.path.splitext(file_name)[1]
                 self.paginator.page = pid+1
-                self.paginator.posts = self.site.posts[pid*page_size: (pid+1)*page_size]
+                self.paginator.posts = all_items[pid*page_size: (pid+1)*page_size]
                 self.paginator.previous_page = pid if pid else None
-                self.paginator.next_page = pid+1
+                self.paginator.next_page = pid+1 if pid + 1 < page_size else None
                 if pid>0:
                     self.paginator.previous_page_path = "/%s" % file_name
                     if pid<self.paginator.total_pages:
@@ -372,6 +344,7 @@ class Generator(object):
                 else:
                     if pid<self.paginator.total_pages:
                         self.paginator.next_page_path = "/%s_%s%s" % (layout, self.paginator.page+1, ext)
+                context['paginator'] = self.paginator
                 html = self._render(layout, context)
                 self.dump_file(html, context)
         else:
@@ -391,7 +364,7 @@ class Generator(object):
                 os.mkdir(dir_path)
             file_path = os.path.join(dir_path, context['page'].file_name)
         else:
-            if self.paginator and context['page'].file_name in ['index.html', 'index.htm']:
+            if self.paginator and context['page'].page_size > 0:
                 if self.paginator.page>1:
                     file_name = context['page'].file_name
                     file_path = os.path.join(base_path,"%s_%s%s" % (
@@ -405,36 +378,29 @@ class Generator(object):
                 file_path = os.path.join(base_path, context['page'].file_name)
         with open(file_path, 'w+') as f:
             f.write(html.encode('utf8'))
-        print context['page'].file_name, "process ok!"
+        click.echo(context['page'].file_name + " process ok!")
 
-
-    def copytree(self, src, dst, symlinks=False, ignore=None):
-        for item in os.listdir(src):
-            s = os.path.join(src, item)
-            d = os.path.join(dst, item)
-            if os.path.isdir(s):
-                shutil.copytree(s, d, symlinks, ignore)
-            else:
-                shutil.copy2(s, d)
 
     def move_ext_dictionary(self):
-        paths = os.listdir(os.getcwd())
         tar_path = os.path.join(os.getcwd(), SITE_FOLDER)
+        shutil.rmtree(tar_path)
+        os.mkdir(tar_path)
+        asset_path = os.path.join(os.getcwd(), ASSETS_FOLDER)
+        paths = os.listdir(asset_path)
+        
         for filename in paths:
-            path = os.path.join(os.getcwd(), filename)
-            dir_name = os.path.split(path)[1]
-            if not dir_name.startswith("_") and not dir_name.startswith(".") and not os.path.isfile(path):
-                tar_dir = os.path.join(tar_path, dir_name)
-                if not os.path.exists(tar_dir):
-                    os.mkdir(tar_dir)
-                print "copy", path, "to", tar_dir
-                self.copytree(path, tar_dir)
+            src_path = os.path.join(asset_path, filename)
+            if os.path.isfile(src_path):
+                shutil.copy(src_path, os.path.join(tar_path, filename))
+            else:
+                shutil.copytree(src_path, os.path.join(tar_path, filename))
+            click.echo('copy %s to %s done' % (src_path, tar_path))
 
 
     def parse_file(self):
         self.move_ext_dictionary()
         contexts = []
-        for file_name, property in self.context_propertys.iteritems():
+        for file_name, property in iteritems(self.context_propertys):
             if 'layout' not in property:
                 continue
             if property.get('is_content') or property.get('is_page'):
@@ -446,6 +412,10 @@ class Generator(object):
                 page.date = property.get('date')
                 page.file_name = file_name
                 page.layout = property.get('layout')
+                page.meta = property
+                page.page_size = int(property.get('page_size', '0'))
+                page.page_filter = property.get('page_filter', '')
+                page.page_sort = property.get('page_sort', '')
                 page.template_instance = self.env.get_template(file_name)
                 page.template_str = self.templates.get(file_name)
                 context = dict(page=page, content="", post=None, site=self.site, paginator=self.paginator)
@@ -462,6 +432,7 @@ class Generator(object):
                     self.site.tags = set(list(self.site.tags) + list(post.tags))
                     page.file_name = save_name
                     page.directory = dt_str
+                    post.meta = property
                     post.date = dt
                     context['post'] = post
                     context['content'] = post.content
@@ -477,7 +448,63 @@ class Generator(object):
             self._render_page(context)
 
 
-@manager.command
+@click.group()
+def cli():
+    pass
+
+
+@click.command()
+@click.argument('project_name')
+def project(project_name):
+    """
+    创建一个project
+    :param name: 站点的名字
+    :return:
+    """
+    path = os.path.join(os.getcwd(), project_name)
+    if not os.path.exists(path):
+        os.mkdir(path)
+    else:
+        click.echo('project exists')
+        return sys.exit(1)
+    post_path = os.path.join(path, POSTS_FOLDER)
+    os.mkdir(post_path)
+    layout_path = os.path.join(path, LAYOUTS_FOLDER)
+    os.mkdir(layout_path)
+    site_path = os.path.join(path, SITE_FOLDER)
+    os.mkdir(site_path)
+    include_path = os.path.join(path, INCLUDE_FOLDER)
+    os.mkdir(include_path)
+    assets_path = os.path.join(path, ASSETS_FOLDER)
+    os.mkdir(assets_path)
+
+    with open(os.path.join(path, CONFIG), 'w') as f:
+        f.write((u'site_name: %s\n' % project_name).encode('utf8'))
+        f.write((u'paginate: 10\n').encode('utf8'))
+
+    click.echo("project %s inited" % project_name)
+
+
+@click.command()
+@click.argument('title')
+def new_post(title):
+    template = """---
+layout: post
+title: %s
+author: me
+---
+""" % title
+    dt = datetime.datetime.now()
+    file_name = "%s-%02d-%02d-%s.md" % (dt.year, dt.month, dt.day, title)
+    dir_path = os.path.join(os.getcwd(), POSTS_FOLDER)
+    file_path = os.path.join(dir_path, file_name)
+    with open(file_path, 'w') as f:
+        f.write(template)
+    click.echo(template)
+    os.system("open _post/%s" % file_name )
+
+
+@click.command()
 def gen():
     """
     生成内容
@@ -486,10 +513,11 @@ def gen():
     generator = Generator()
     generator.parse_file()
 
-    print "all process done"
+    click.echo("all process done")
 
 
-@manager.command
+@click.command()
+@click.argument('port')
 def test(port):
     import BaseHTTPServer
     from SimpleHTTPServer import SimpleHTTPRequestHandler
@@ -501,74 +529,16 @@ def test(port):
     HandlerClass.protocol_version = Protocol
     httpd = ServerClass(server_address, HandlerClass)
     sa = httpd.socket.getsockname()
-    print "Serving HTTP on", sa[0], "port", sa[1], "..."
+    click.echo("Serving HTTP on %s port %s ..." % (sa[0], sa[1]))
     httpd.serve_forever()
 
 
-@manager.command
-def nginx_conf(domain):
-    conf = """
-server {
- listen          80;
- server_name     %s;
- location / {
-  root  %s;
-  index index.html;
- }
-}
-    """ % (domain, os.path.join(os.getcwd(), SITE_FOLDER))
-    sys.stdout.write(conf)
-
-
-@manager.command
-def hook_conf(port, log_file):
-    conf = """[program:%s]
-command=/usr/bin/python bibi.py runserver --host 0.0.0.0 --port %s
-directory=%s
-umask=022
-startsecs=0
-stopwaitsecs=0
-redirect_stderr=true
-stdout_logfile=%s
-autorestart=true
-autostart=true
-""" % (proj, port, os.getcwd(), log_file)
-    sys.stdout.write(conf)
-
-@manager.command
-def new_post(title):
-    template = """---
-layout: post
-title: %s
----
-
-
-""" % title
-    dt = datetime.datetime.now()
-    file_name = "%s-%02d-%02d-%s.md" % (dt.year, dt.month, dt.day, title)
-    dir_path = os.path.join(os.getcwd(), POSTS_FOLDER)
-    file_path = os.path.join(dir_path, file_name)
-    with open(file_path, 'w') as f:
-        f.write(template)
-    print template
-    os.system("open _post/%s" % file_name )
-
-
-
-@app.route('/hook', methods=['POST', 'GET'])
-def webhook():
-    import git
-    logging.error("get notification!")
-    g = git.cmd.Git(os.getcwd())
-    g.pull()
-    logging.error("git pull ok!")
-    gen()
-    logging.error("finish generate!")
-    return jsonify(status="ok")
-
-
 def main():
-    manager.run()
+    cli.add_command(project)
+    cli.add_command(gen)
+    cli.add_command(test)
+    cli.add_command(new_post)
+    cli()
 
 
 if __name__ == "__main__":
