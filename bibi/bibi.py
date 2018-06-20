@@ -86,6 +86,14 @@ def sorts(iterer, property, direction):
     return sorted(iterer, key=lambda item: item.meta[property])
 
 
+def query_list(iterer, query_string):
+    q_list = iterer
+    query_dt = dict([sq.split('=') for sq in query_string.split('&')])
+    for key, value in iteritems(query_dt):
+        q_list = [item for item in q_list if item.meta.get(key.strip(), '') == value.strip()]
+    return q_list
+
+
 def disqus(short_name):
     return """<div id="disqus_thread"></div>
     <script type="text/javascript">
@@ -212,6 +220,7 @@ class Generator(object):
         self.env.filters['limit'] = limit
         self.env.filters['disqus'] = disqus
         self.env.filters['sort'] = sorts
+        self.env.filters['query'] = query_list
 
 
     def _process_header(self, file):
@@ -324,12 +333,12 @@ class Generator(object):
                 else:
                     all_items = sorted(all_items, key=lambda item: item.meta [key])
             if context['page'].page_filter:
-                query_dt = dict([sq.split('=') for sq in context ['page'].page_filter.split('&')])
-                for key, value in iteritems(query_dt):
-                    all_items = [item for item in all_items if item.meta.get(key.strip(), '')==value.strip()]
+                all_items = query_list(all_items, context['page'].page_filter)
 
             self.paginator.total_posts = len(all_items)
             self.paginator.total_pages = self.paginator.total_posts / page_size
+            if self.paginator.total_posts % page_size:
+                self.paginator.total_pages += 1
             for pid in range(self.paginator.total_pages):
                 file_name = context['page'].file_name
                 ext = os.path.splitext(file_name)[1]
