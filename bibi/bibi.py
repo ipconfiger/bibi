@@ -1,5 +1,7 @@
 #!/usr/bin/python
 #coding=utf8
+import re
+
 __author__ = 'liming'
 
 import os
@@ -126,6 +128,8 @@ class Page(object):
     page_size = None
     page_filter = None
     page_sort = None
+    page_image = None
+    is_post = None
 
 
 class Post(object):
@@ -139,6 +143,17 @@ class Post(object):
     author = None
     tags = None
     meta = None
+    description = None
+
+class Archive(object):
+    """
+    归档器对象
+    """
+    posts =[]
+    category = None
+    year = 0
+    month = 0
+
 
 class Paginator(object):
     """
@@ -161,8 +176,10 @@ class Site(object):
     pages = []
     posts = []
     tags = []
+    archives = []
     config = {}
     paginate = 10
+
 
 class Generator(object):
     """
@@ -183,6 +200,9 @@ class Generator(object):
         self._get_files("", allow_ext=['.html', '.htm', '.xml', '.md', '.markdown'])
         self._get_files(POSTS_FOLDER, allow_ext=['.md', '.markdown'])
         self.paginator = Paginator()
+        self.archive = Archive()
+        self.open_archive = False
+        self.archives = []
 
         config_path = os.path.join(os.getcwd(), CONFIG)
         if os.path.exists(config_path):
@@ -322,43 +342,59 @@ class Generator(object):
         else:
             layout = os.path.splitext(context['page'].file_name)[0]
 
-        if self.paginator and context['page'].page_size > 0:
-            click.echo('paging......')
-            page_size = context['page'].page_size
-            all_items = self.site.posts
-            if context['page'].page_sort:
-                key, direction = context['page'].page_sort.split('=')
-                if direction.lower() == 'desc':
-                    all_items = sorted(all_items, key=lambda item: item.meta[key], reverse=True)
-                else:
-                    all_items = sorted(all_items, key=lambda item: item.meta [key])
-            if context['page'].page_filter:
-                all_items = query_list(all_items, context['page'].page_filter)
-
-            self.paginator.total_posts = len(all_items)
-            self.paginator.total_pages = self.paginator.total_posts / page_size
-            if self.paginator.total_posts % page_size:
-                self.paginator.total_pages += 1
-            for pid in range(self.paginator.total_pages):
-                file_name = context['page'].file_name
-                ext = os.path.splitext(file_name)[1]
-                self.paginator.page = pid+1
-                self.paginator.posts = all_items[pid*page_size: (pid+1)*page_size]
-                self.paginator.previous_page = pid if pid else None
-                self.paginator.next_page = pid+1 if pid + 1 < page_size else None
-                if pid>0:
-                    self.paginator.previous_page_path = "/%s" % file_name
-                    if pid<self.paginator.total_pages:
-                        self.paginator.next_page_path = "/%s_%s%s" % (layout, self.paginator.page+1, ext)
-                else:
-                    if pid<self.paginator.total_pages:
-                        self.paginator.next_page_path = "/%s_%s%s" % (layout, self.paginator.page+1, ext)
-                context['paginator'] = self.paginator
+        if context.get('is_archive'):
+            # TODO: 执行归档渲染的逻辑
+            for archive_dt in self.archives:
+                self.archive.posts = []
+                self.archive.category = archive_dt
+                for post in self.site.posts:
+                    key = "%s-%s" % (post.date.year, post.date.month)
+                    self.archive.year = post.date.year
+                    self.archive.month = post.date.month
+                    if key == archive_dt:
+                        self.archive.posts.append(post)
+                context['archive'] = self.archive
                 html = self._render(layout, context)
                 self.dump_file(html, context)
+
         else:
-            html = self._render(layout, context)
-            self.dump_file(html, context)
+            if self.paginator and context['page'].page_size > 0:
+                click.echo('paging......')
+                page_size = context['page'].page_size
+                all_items = self.site.posts
+                if context['page'].page_sort:
+                    key, direction = context['page'].page_sort.split('=')
+                    if direction.lower() == 'desc':
+                        all_items = sorted(all_items, key=lambda item: item.meta[key], reverse=True)
+                    else:
+                        all_items = sorted(all_items, key=lambda item: item.meta [key])
+                if context['page'].page_filter:
+                    all_items = query_list(all_items, context['page'].page_filter)
+
+                self.paginator.total_posts = len(all_items)
+                self.paginator.total_pages = self.paginator.total_posts / page_size
+                if self.paginator.total_posts % page_size:
+                    self.paginator.total_pages += 1
+                for pid in range(self.paginator.total_pages):
+                    file_name = context['page'].file_name
+                    ext = os.path.splitext(file_name)[1]
+                    self.paginator.page = pid+1
+                    self.paginator.posts = all_items[pid*page_size: (pid+1)*page_size]
+                    self.paginator.previous_page = pid if pid else None
+                    self.paginator.next_page = pid+1 if pid + 1 < page_size else None
+                    if pid>0:
+                        self.paginator.previous_page_path = "/%s" % file_name
+                        if pid<self.paginator.total_pages:
+                            self.paginator.next_page_path = "/%s_%s%s" % (layout, self.paginator.page+1, ext)
+                    else:
+                        if pid<self.paginator.total_pages:
+                            self.paginator.next_page_path = "/%s_%s%s" % (layout, self.paginator.page+1, ext)
+                    context['paginator'] = self.paginator
+                    html = self._render(layout, context)
+                    self.dump_file(html, context)
+            else:
+                html = self._render(layout, context)
+                self.dump_file(html, context)
 
 
 
@@ -373,18 +409,31 @@ class Generator(object):
                 os.mkdir(dir_path)
             file_path = os.path.join(dir_path, context['page'].file_name)
         else:
-            if self.paginator and context['page'].page_size > 0:
-                if self.paginator.page>1:
-                    file_name = context['page'].file_name
-                    file_path = os.path.join(base_path,"%s_%s%s" % (
-                        os.path.splitext(file_name)[0],
-                        self.paginator.page,
-                        os.path.splitext(file_name)[1]
-                    ))
+            if self.open_archive and context.get('archive'):
+                archive_dir_path = os.path.join(base_path, 'archive')
+                if not os.path.exists(archive_dir_path):
+                    os.mkdir(archive_dir_path)
+
+                archive = context['archive']
+                file_name = context['page'].file_name
+                file_path = os.path.join(archive_dir_path, "%s_%s%s" % (
+                    os.path.splitext(file_name)[0],
+                    archive.category,
+                    os.path.splitext(file_name)[1]
+                ))
+            else:
+                if self.paginator and context['page'].page_size > 0:
+                    if self.paginator.page>1:
+                        file_name = context['page'].file_name
+                        file_path = os.path.join(base_path,"%s_%s%s" % (
+                            os.path.splitext(file_name)[0],
+                            self.paginator.page,
+                            os.path.splitext(file_name)[1]
+                        ))
+                    else:
+                        file_path = os.path.join(base_path, context['page'].file_name)
                 else:
                     file_path = os.path.join(base_path, context['page'].file_name)
-            else:
-                file_path = os.path.join(base_path, context['page'].file_name)
         with open(file_path, 'w+') as f:
             f.write(html.encode('utf8'))
         click.echo(context['page'].file_name + " process ok!")
@@ -395,7 +444,11 @@ class Generator(object):
         will_delete_path = os.listdir(tar_path)
         for filename in will_delete_path:
             if not filename.startswith('.'):
-                shutil.rmtree(os.path.join(tar_path, filename))
+                target_file_path = os.path.join(tar_path, filename)
+                if os.path.isdir(target_file_path):
+                    shutil.rmtree(target_file_path)
+                else:
+                    os.remove(target_file_path)
 
         asset_path = os.path.join(os.getcwd(), ASSETS_FOLDER)
         paths = os.listdir(asset_path)
@@ -408,6 +461,16 @@ class Generator(object):
                 shutil.copytree(src_path, os.path.join(tar_path, filename))
             click.echo('copy %s to %s done' % (src_path, tar_path))
 
+    def _parse_content_image(self, md_txt):
+        images_list = re.findall(r'!\[\S*?]\((.+?)\)', md_txt)
+        return images_list[0] if images_list else ''
+
+    def _parse_content_dis(self, md_txt):
+        for line in md_txt.split('\n'):
+            if not line.strip():
+                continue
+            if not self._parse_content_image(line):
+                return line
 
     def parse_file(self):
         self.move_ext_dictionary()
@@ -417,6 +480,7 @@ class Generator(object):
                 continue
             if property.get('is_content') or property.get('is_page'):
                 page = Page()
+                page.is_post = False
                 page.url = u"/%s" % file_name.decode('utf-8')
                 page.key = file_name
                 page.directory = ''
@@ -430,29 +494,49 @@ class Generator(object):
                 page.page_sort = property.get('page_sort', '')
                 page.template_instance = self.env.get_template(file_name)
                 page.template_str = self.templates.get(file_name)
-                context = dict(page=page, content="", post=None, site=self.site, paginator=self.paginator)
-
+                context = dict(page=page, content="", post=None, site=self.site, paginator=self.paginator, is_archive=False)
+                if page.file_name == 'archive.html':
+                    context['is_archive'] = True
+                    self.open_archive = True
                 if property.get('is_content'):
                     dt, dt_str, save_name = self._parse_filename(file_name)
+                    raw_content = page.template_instance.render(content='')
                     post = Post()
+                    page.is_post = True
                     post.url = u"/%s/%s" % (dt_str.decode('utf-8'), save_name.decode('utf-8'))
+                    page.url = post.url
                     post.date = dt
                     post.title = property.get('title')
                     post.author = property.get('author', 'anonymous')
-                    post.content = markdown.markdown(page.template_instance.render(content=''))
+                    post.content = markdown.markdown(raw_content)
                     post.tags = set(property.get('tags', '').split(','))
                     self.site.tags = set(list(self.site.tags) + list(post.tags))
                     page.file_name = save_name
                     page.directory = dt_str
                     post.meta = property
                     post.date = dt
+                    page.page_image = self._parse_content_image(raw_content)
+                    post.page_image = page.page_image
+                    post.description = self._parse_content_dis(raw_content)
+                    # if page.page_image:
+                    #     click.echo("image:%s" % page.page_image)
                     context['post'] = post
+                    context['page'] = page
                     context['content'] = post.content
                     self.site.posts.append(post)
                 if property.get('is_page'):
                     if not os.path.splitext(file_name)[0] == 'index':
                         self.site.pages.append(page)
                 contexts.append(context)
+
+        if self.open_archive:
+            archive_dates = []
+            for post in self.site.posts:
+                key = "%s-%s" % (post.date.year, post.date.month)
+                archive_dates.append(key)
+            archive_dates = sorted(list(set(archive_dates)), reverse=True)
+            self.archives = archive_dates
+            self.site.archives = self.archives
 
         self.site.posts.sort(key=lambda item:item.date, reverse=True)
 
