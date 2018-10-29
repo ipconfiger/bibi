@@ -392,8 +392,11 @@ class Generator(object):
 
     def move_ext_dictionary(self):
         tar_path = os.path.join(os.getcwd(), SITE_FOLDER)
-        shutil.rmtree(tar_path)
-        os.mkdir(tar_path)
+        will_delete_path = os.listdir(tar_path)
+        for filename in will_delete_path:
+            if not filename.startswith('.'):
+                shutil.rmtree(os.path.join(tar_path, filename))
+
         asset_path = os.path.join(os.getcwd(), ASSETS_FOLDER)
         paths = os.listdir(asset_path)
         
